@@ -6,9 +6,6 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
 
 GAMMA = 0.99
 BATCH_SIZE = 32
@@ -46,107 +43,123 @@ class DQN(nn.Module):
 
         return action
 
+    def save(self, filename="agent.pt"):
+        torch.save(self, './models/' + filename)
 
-env = gym.make("ALE/Asteroids-v5")
 
-replay_buffer = deque(maxlen=BUFFER_SIZE)
+def loadnet(filename="agent.pt"):
+    net = torch.load('./models/' + filename)
+    net.eval()
+    return net
 
-rew_buffer = deque([0.0], maxlen=500)
 
-episode_reward = 0.0
+if __name__ == "__main__":
+    env = gym.make("ALE/Asteroids-v5")
 
-online_net = DQN(env)
-target_net = DQN(env)
+    replay_buffer = deque(maxlen=BUFFER_SIZE)
 
-target_net.load_state_dict(online_net.state_dict())
+    rew_buffer = deque([0.0], maxlen=500)
 
-optimizer = torch.optim.Adam(online_net.parameters(), lr=5e-4)
+    episode_reward = 0.0
 
-# Initalise replay buffer
-obs = env.reset()[0]
-for _ in range(MIN_REPLAY_SIZE):
-    action = env.action_space.sample()
+    online_net = DQN(env)
+    target_net = DQN(env)
+    if input("load?") == 'yes':
+        online_net = loadnet()
+        target_net = loadnet()
 
-    new_obs, rew, done, _, _ = env.step(action)
-    if rew < 0:
-        print(rew)
-    transition = (obs, action, rew, done, new_obs)
-    replay_buffer.append(transition)
-    obs = new_obs
+    target_net.load_state_dict(online_net.state_dict())
 
-    if done:
-        obs = env.reset()[0]
+    optimizer = torch.optim.Adam(online_net.parameters(), lr=5e-4)
 
-# Main training loop
-
-obs = env.reset()[0]
-
-for step in itertools.count():
-    epsilon = np.interp(step, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
-
-    rnd_sample = random.random()
-
-    if rnd_sample <= epsilon:
+    # Initialise replay buffer
+    obs = env.reset()[0]
+    for _ in range(MIN_REPLAY_SIZE):
         action = env.action_space.sample()
 
-    else:
-        action = online_net.act(obs)
+        new_obs, rew, done, _, _ = env.step(action)
+        if rew < 0:
+            print(rew)
+        transition = (obs, action, rew, done, new_obs)
+        replay_buffer.append(transition)
+        obs = new_obs
 
-    new_obs, rew, done, _, _ = env.step(action)
-    transition = (obs, action, rew, done, new_obs)
-    if rew < 0:
-        print(rew)
-    replay_buffer.append(transition)
-    obs = new_obs
+        if done:
+            obs = env.reset()[0]
 
-    episode_reward += rew
+    # Main training loop
 
-    if done:
-        obs = env.reset()[0]
+    obs = env.reset()[0]
 
-        rew_buffer.append(episode_reward)
-        episode_reward = 0.0
+    for step in itertools.count():
+        epsilon = np.interp(step, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
+
+        rnd_sample = random.random()
+
+        if rnd_sample <= epsilon:
+            action = env.action_space.sample()
+
+        else:
+            action = online_net.act(obs)
+
+        new_obs, rew, done, _, _ = env.step(action)
+        transition = (obs, action, rew, done, new_obs)
+        if rew < 0:
+            print(rew)
+        replay_buffer.append(transition)
+        obs = new_obs
+
+        episode_reward += rew
+
+        if done:
+            obs = env.reset()[0]
+
+            rew_buffer.append(episode_reward)
+            episode_reward = 0.0
 
 
-    # Start gradient step
-    transitions = random.sample(replay_buffer, BATCH_SIZE)
+        # Start gradient step
+        transitions = random.sample(replay_buffer, BATCH_SIZE)
 
-    obses = np.asarray([t[0] for t in transitions])
-    actions = np.asarray([t[1] for t in transitions])
-    rews = np.asarray([t[2] for t in transitions])
-    dones = np.asarray([t[3] for t in transitions])
-    new_obses = np.asarray([t[4] for t in transitions])
+        obses = np.asarray([t[0] for t in transitions])
+        actions = np.asarray([t[1] for t in transitions])
+        rews = np.asarray([t[2] for t in transitions])
+        dones = np.asarray([t[3] for t in transitions])
+        new_obses = np.asarray([t[4] for t in transitions])
 
-    obses_t = torch.as_tensor(obses, dtype=torch.float32)
-    actions_t = torch.as_tensor(actions, dtype=torch.int64).unsqueeze(-1)
-    rews_t = torch.as_tensor(rews, dtype=torch.float32).unsqueeze(-1)
-    dones_t = torch.as_tensor(dones, dtype=torch.float32).unsqueeze(-1)
-    new_obses_t = torch.as_tensor(new_obses, dtype=torch.float32)
+        obses_t = torch.as_tensor(obses, dtype=torch.float32)
+        actions_t = torch.as_tensor(actions, dtype=torch.int64).unsqueeze(-1)
+        rews_t = torch.as_tensor(rews, dtype=torch.float32).unsqueeze(-1)
+        dones_t = torch.as_tensor(dones, dtype=torch.float32).unsqueeze(-1)
+        new_obses_t = torch.as_tensor(new_obses, dtype=torch.float32)
 
-    # Compute targets
-    target_q_values = target_net(new_obses_t)
-    mac_target_q_values = target_q_values.max(dim=1, keepdim=True)[0]
+        # Compute targets
+        target_q_values = target_net(new_obses_t)
+        mac_target_q_values = target_q_values.max(dim=1, keepdim=True)[0]
 
-    targets = rews_t + GAMMA * (1 - dones_t) * mac_target_q_values
+        targets = rews_t + GAMMA * (1 - dones_t) * mac_target_q_values
 
-    # Compute loss
-    q_values = online_net(obses_t)
+        # Compute loss
+        q_values = online_net(obses_t)
 
-    action_q_values = torch.gather(input=q_values, dim=1, index=actions_t)
+        action_q_values = torch.gather(input=q_values, dim=1, index=actions_t)
 
-    loss = nn.functional.smooth_l1_loss(action_q_values, targets)
+        loss = nn.functional.smooth_l1_loss(action_q_values, targets)
 
-    # Gradient descent
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+        # Gradient descent
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-    # Update target network
-    if step % TARGET_UPDATE_FREQUENCY == 0:
-        target_net.load_state_dict(online_net.state_dict())
+        # Update target network
+        if step % TARGET_UPDATE_FREQUENCY == 0:
+            target_net.load_state_dict(online_net.state_dict())
 
-    # logging
-    if step % 100 == 0:
-        print()
-        print('Step', step)
-        print('Avg Rew', np.mean(rew_buffer))
+        # logging
+        if step % 100 == 0:
+            print()
+            print('Step', step)
+            print('Avg Rew', np.mean(rew_buffer))
+
+        if step == 10000:
+            online_net.save()
