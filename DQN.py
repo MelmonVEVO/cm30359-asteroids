@@ -43,18 +43,20 @@ class DQN(nn.Module):
 
         return action
 
-    def save(self, filename="agent.pt"):
-        torch.save(self, './models/' + filename)
+
+def savenet(model: DQN, filename="agent.pth"):
+    torch.save(model.state_dict(), './models/' + filename)
 
 
-def loadnet(filename="agent.pt"):
-    net = torch.load('./models/' + filename)
+def loadnet(environment, filename="agent.pth"):
+    net = DQN(environment)
+    net.load_state_dict(torch.load('./models/' + filename))
     net.eval()
     return net
 
 
 if __name__ == "__main__":
-    env = gym.make("ALE/Asteroids-v5")
+    env = gym.make("ALE/Asteroids-v5", obs_type="grayscale")
 
     replay_buffer = deque(maxlen=BUFFER_SIZE)
 
@@ -65,8 +67,8 @@ if __name__ == "__main__":
     online_net = DQN(env)
     target_net = DQN(env)
     if input("load?") == 'yes':
-        online_net = loadnet()
-        target_net = loadnet()
+        online_net = loadnet(env)
+        target_net = loadnet(env)
 
     target_net.load_state_dict(online_net.state_dict())
 
@@ -162,4 +164,4 @@ if __name__ == "__main__":
             print('Avg Rew', np.mean(rew_buffer))
 
         if step == 10000:
-            online_net.save()
+            savenet(online_net)

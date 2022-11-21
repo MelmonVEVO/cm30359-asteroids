@@ -1,17 +1,20 @@
 from DQN import DQN, loadnet
 import gym
 
-env = gym.make("ALE/Asteroids-v5", render_mode='human')
+env = gym.make("ALE/Asteroids-v5")
 obs = env.reset()[0]
 
-net = loadnet()
+net = loadnet(env)
 
 # Doesn't train, this is just to observe the agent playing in real time
-for _ in range(1000):
+# TODO this doesn't work lmao
+for _ in range(10000):
     action = net.act(obs)
-    new_obs, rew, done, _, _ = env.step(action)
+    totalrew = 0
+
+    obs, rew, done, _, _ = env.step(action)
+    totalrew += rew
 
     if done:
         obs = env.reset()[0]
-
-env.close()
+        print(totalrew)
