@@ -6,6 +6,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 
 GAMMA = 0.99
 BATCH_SIZE = 32
@@ -56,7 +57,9 @@ def loadnet(environment, filename="agent.pth"):
 
 
 if __name__ == "__main__":
-    env = gym.make("ALE/Asteroids-v5", obs_type="grayscale")
+    writer = SummaryWriter()
+
+    env = gym.make("ALE/Breakout-v5", obs_type="grayscale", full_action_space=False)
 
     replay_buffer = deque(maxlen=BUFFER_SIZE)
 
@@ -73,6 +76,8 @@ if __name__ == "__main__":
     target_net.load_state_dict(online_net.state_dict())
 
     optimizer = torch.optim.Adam(online_net.parameters(), lr=5e-4)
+
+    # writer.add_graph(online_net)
 
     # Initialise replay buffer
     obs = env.reset()[0]
@@ -158,10 +163,23 @@ if __name__ == "__main__":
             target_net.load_state_dict(online_net.state_dict())
 
         # logging
-        if step % 100 == 0:
-            print()
+        if step % 1000 == 0:
+            print('')
             print('Step', step)
-            print('Avg Rew', np.mean(rew_buffer))
+            print('Avg Rew past 1000 steps', np.mean(rew_buffer))
+            print('Epsilon', epsilon)
+            writer.add_scalar('DQN/reward',
+                              episode_reward,
+                              step)
+            writer.add_scalar('DQN/avg_rew',
+                              np.mean(rew_buffer),
+                              step)
+            writer.add_scalar('DQN/loss',
+                              loss,
+                              step)
+            rew_buffer.clear()
 
-        if step == 10000:
+        if step % 10000 == 0:
             savenet(online_net)
+
+    writer.close()
