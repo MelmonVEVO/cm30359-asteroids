@@ -1,7 +1,7 @@
 from DQN import DQN, loadnet
 import gym
 
-env = gym.make("ALE/Asteroids-v5")
+env = gym.make("ALE/Breakout-v5")
 obs = env.reset()[0]
 
 net = loadnet(env)
