@@ -11,17 +11,18 @@ BUFFER_SIZE = 200000
 MIN_REPLAY_SIZE = 2000
 EPSILON_START = 1.0
 EPSILON_END = 0.01
-EPSILON_DECAY = 10000
-TARGET_UPDATE_FREQUENCY = 1000
+EPSILON_DECAY = 150000
+TARGET_UPDATE_FREQUENCY = 10000
 
 
-class CNN(nn.Module):
+class DQN(nn.Module):
     def __init__(self, env):
         super().__init__()
         
         self.input_shape = env.observation_space.shape
         self.num_actions = env.action_space.n
         
+        # features
         self.features = nn.Sequential(
             nn.Conv2d(self.input_shape[0], 32, kernel_size=8, stride=4),
             nn.ReLU(),
@@ -31,6 +32,7 @@ class CNN(nn.Module):
             nn.ReLU()
         )
         
+        # fully connencted
         self.fc = nn.Sequential(
             nn.Linear(self.feature_size(), 512),
             nn.ReLU(),
@@ -47,40 +49,13 @@ class CNN(nn.Module):
     def feature_size(self):
         return self.features(torch.autograd.Variable(torch.zeros(1, *self.input_shape))).view(1, -1).size(1)
     
-    #not sure which act func to use, 
     def act(self, obs):
         state = torch.FloatTensor(obs).unsqueeze(0)
         q_values = self.forward(state)
         action = q_values.max(1)[1].item()
         return action
-     
-    
-class DQN(nn.Module):
-    def __init__(self, env):
-        super().__init__()
-        in_features = int(np.prod(env.observation_space.shape))
-        self.net = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(in_features, 64),
-            nn.Tanh(),
-            nn.Linear(64, env.action_space.n)
-        )
-        
-    def forward(self, x):
-        return self.net(x)
-
-    def act(self, obs):
-        obs_t = torch.as_tensor(obs, dtype=torch.float32)
-        q_values = self(obs_t.unsqueeze(0))
-
-        max_q_index = torch.argmax(q_values, dim=1)[0]
-        action = max_q_index.detach().item()
-
-        return action
-
-
-# def savenet(model: DQN, filename="agent.pth"):
-#     torch.save(model.state_dict(), './models/' + filename)
+       
+       
 def savenet(model, filename):
     torch.save(model.state_dict(), './models/' + filename)
 
@@ -94,24 +69,23 @@ def loadnet(environment, filename="agent.pth"):
 
 if __name__ == "__main__":
     writer = SummaryWriter()
-    # env = gym.make("ALE/Breakout-v5", obs_type="grayscale")
     
     env_id = "ALE/Breakout-v5"
     env    = make_atari(env_id)
     env    = wrap_deepmind(env)
     env    = wrap_pytorch(env)
-
+    
     replay_buffer = deque(maxlen=BUFFER_SIZE)
 
     rew_buffer = deque([0.0], maxlen=500)
 
     episode_reward = 0.0
 
-    online_net = CNN(env)
-    target_net = CNN(env)
-    # if input("load?") == 'yes':
-    #     online_net = loadnet(env)
-    #     target_net = loadnet(env)
+    online_net = DQN(env)
+    target_net = DQN(env)
+    if input("load?") == 'yes':
+        online_net = loadnet(env)
+        target_net = loadnet(env)
 
     target_net.load_state_dict(online_net.state_dict())
 
@@ -165,7 +139,7 @@ if __name__ == "__main__":
 
             rew_buffer.append(episode_reward)
             all_rewards.append(episode_reward)
-            # print(episode_reward)
+            
             episode_reward = 0.0
 
 
@@ -207,38 +181,41 @@ if __name__ == "__main__":
             target_net.load_state_dict(online_net.state_dict())
 
         # logging
-        if step % 1000 == 0:
+        if step % 100 == 0:
+            writer.add_scalar('DQN/avg_rew',
+                              np.mean(rew_buffer),
+                              step)
+            avg_rewards.append(np.mean(rew_buffer))
+            steps.append(step)
+            
+        if (step % 1000 == 0) and (step > 0):
             print('')
             print('Step', step)
             print('Avg Rew', np.mean(rew_buffer))
             print('Epsilon val', epsilon)
-
-            writer.add_scalar('DQN/avg_rew',
-                              np.mean(rew_buffer),
-                              step)
-
-        if step % 10000 == 0:
+            print('Last 5avg ', np.mean(all_rewards[-5:]))
+            
+        # save dqn at checkpoints
+        if (step % 10000 == 0) and (step > 0): #save every 10k
             savenet(online_net, 'agent.pth')
-            # print(rew_buffer)
-            avg_rewards.append(np.mean(rew_buffer))
-            steps.append(step)
-
-        if step == 10000:
+      
+        if step == 10000: #10k
             savenet(online_net, "agent1.pth")
             
-        if step == 30000:
+        if step == 50000: #50k
             savenet(online_net, "agent2.pth")
             
-        if step == 50000:
+        if step == 100000: #100k
             savenet(online_net, "agent3.pth")
             
-        if step == 100000:
+        if step == 200000: #200k
             savenet(online_net, "agent4.pth")
             
-        if step == 300000:
+        if step == 250000: #250k
             savenet(online_net, "agent5.pth")
             
-        if (step % 10000 == 0) and (step != 0):
+        # used for plotting training results
+        if (step % 50000 == 0) and (step > 190000):
             plt.plot(steps, avg_rewards)
             plt.xlabel("Steps")
             plt.ylabel("Avg reward")

@@ -164,9 +164,9 @@ class FrameStack(gym.Wrapper):
         return self._get_ob(), info
 
     def step(self, action):
-        ob, reward, done, info = self.env.step(action)
+        ob, reward, done, _, info = self.env.step(action)
         self.frames.append(ob)
-        return self._get_ob(), reward, done, info
+        return self._get_ob(), reward, done, _, info
 
     def _get_ob(self):
         assert len(self.frames) == self.k
@@ -216,7 +216,7 @@ def make_atari(env_id, render_mode=None):
     env = MaxAndSkipEnv(env, skip=4)
     return env
 
-def wrap_deepmind(env, episode_life=True, clip_rewards=False, frame_stack=False, scale=False):
+def wrap_deepmind(env, episode_life=True, clip_rewards=False, frame_stack=True, scale=True):
     """Configure environment for DeepMind-style Atari.
     """
     if episode_life:
