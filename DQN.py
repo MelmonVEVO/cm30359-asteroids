@@ -14,6 +14,52 @@ EPSILON_END = 0.01
 EPSILON_DECAY = 150000
 TARGET_UPDATE_FREQUENCY = 10000
 
+class DDQN(nn.Module):
+    def __init__(self, env):
+        super().__init__()
+        
+        self.input_shape = env.observation_space.shape
+        self.num_actions = env.action_space.n
+        
+        self.conv = nn.Sequential(
+            nn.Conv2d(self.input_shape[0], 32, kernel_size=8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.ReLU()
+        )
+        
+        out_size = self.conv_out(self.input_shape)
+        
+        self.fc_adv = nn.Sequential(
+            nn.Linear(out_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, self.num_actions)
+        )
+        
+        self.fc_val = nn.Sequential(
+            nn.Linear(out_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1)
+        )
+        
+    def conv_out(self, shape):
+        o = self.conv(torch.zeros(1, *shape))
+        return int(np.prod(o.size()))
+    
+    def forward(self, x):
+        conv_out = self.conv(x).view(x.size()[0], -1)
+        adv = self.fc_adv(conv_out)
+        val = self.fc_val(conv_out)
+        return val + adv - adv.mean(dim=1, keepdim=True)
+    
+    def act(self, obs):
+        state = torch.FloatTensor(obs).unsqueeze(0)
+        q_values = self.forward(state)
+        action = q_values.max(1)[1].item()
+        return action
+        
 
 class DQN(nn.Module):
     def __init__(self, env):
@@ -46,6 +92,7 @@ class DQN(nn.Module):
         x = self.fc(x)
         return x
         
+    #get conv out size
     def feature_size(self):
         return self.features(torch.autograd.Variable(torch.zeros(1, *self.input_shape))).view(1, -1).size(1)
     
@@ -81,8 +128,8 @@ if __name__ == "__main__":
 
     episode_reward = 0.0
 
-    online_net = DQN(env)
-    target_net = DQN(env)
+    online_net = DDQN(env)
+    target_net = DDQN(env)
     if input("load?") == 'yes':
         online_net = loadnet(env)
         target_net = loadnet(env)
