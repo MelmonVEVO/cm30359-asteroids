@@ -1,4 +1,4 @@
-from DQN import DQN, loadnet
+from DQN import DQN, DDQN, loadnet
 import gym
 from wrappers import *
 import random

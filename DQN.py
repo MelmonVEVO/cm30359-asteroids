@@ -14,6 +14,7 @@ EPSILON_END = 0.01
 EPSILON_DECAY = 150000
 TARGET_UPDATE_FREQUENCY = 10000
 
+#Duelling dqn
 class DDQN(nn.Module):
     def __init__(self, env):
         super().__init__()
@@ -49,6 +50,7 @@ class DDQN(nn.Module):
         return int(np.prod(o.size()))
     
     def forward(self, x):
+        x = x.float()
         conv_out = self.conv(x).view(x.size()[0], -1)
         adv = self.fc_adv(conv_out)
         val = self.fc_val(conv_out)
@@ -80,7 +82,7 @@ class DQN(nn.Module):
         
         # fully connencted
         self.fc = nn.Sequential(
-            nn.Linear(self.feature_size(), 512),
+            nn.Linear(self.conv_out(self.input_shape), 512),
             nn.ReLU(),
             nn.Linear(512, self.num_actions)
         )
@@ -91,10 +93,10 @@ class DQN(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
-        
-    #get conv out size
-    def feature_size(self):
-        return self.features(torch.autograd.Variable(torch.zeros(1, *self.input_shape))).view(1, -1).size(1)
+ 
+    def conv_out(self, shape):
+        o = self.features(torch.zeros(1, *shape))
+        return int(np.prod(o.size()))
     
     def act(self, obs):
         state = torch.FloatTensor(obs).unsqueeze(0)
@@ -106,9 +108,8 @@ class DQN(nn.Module):
 def savenet(model, filename):
     torch.save(model.state_dict(), './models/' + filename)
 
-
 def loadnet(environment, filename="agent.pth"):
-    net = DQN(environment)
+    net = DDQN(environment)
     net.load_state_dict(torch.load('./models/' + filename))
     net.eval()
     return net
